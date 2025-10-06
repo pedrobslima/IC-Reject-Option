@@ -1,0 +1,22 @@
+{
+    "SEED": 1246495320,
+    "VERSION": "v0",
+    "TWO_MOONS": {
+        "N_SAMPLES": 10000,
+        "NOISE": 0.22
+    },
+    "BASE_MODELS":[
+        "Decision_Tree",
+        "SGD",
+        "Logistic_Regression",
+        "KNN",
+        "SVM_Linear",
+        "SVM_Polynomial",
+        "SVM_RBF",
+        "MLP",
+        "Random_Forest",
+        "Gradient_Boosting",
+        "AdaBoost",
+        "XGBoost"
+    ] 
+}
