@@ -24,6 +24,9 @@ from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.model_selection import cross_val_score
 
+import warnings
+warnings.filterwarnings('ignore')
+
 # =================================================
 
 with open('config.json', 'r') as f:
@@ -172,6 +175,19 @@ def load_model_by_name(experiment_name, run_name):
 
 # ======================================================
 
+from sklearn.preprocessing import OneHotEncoder, StandardScaler#, MinMaxScaler
+from sklearn.model_selection import train_test_split
+
+def transform_property(x):
+    x = re.sub('(Private room( in )?)|(Shared room( in )?)|(Entire )|(Room in )', '', x).lower()
+    if(x=='casa particular'):
+        x='home'
+    
+    if(x not in ['rental unit','home','condo','loft','serviced apartment']):
+        x='other'
+
+    return x
+
 def get_data(dataset:str):
     global CONFIG
     if(dataset=='twomoons'):
@@ -185,7 +201,85 @@ def get_data(dataset:str):
         X_test_norm = scaler.transform(X_test)
 
     elif(dataset=='airbnb'):
-        pass
+        df = pd.read_csv('data/listings.csv')
+
+        bathrooms = df['bathrooms_text'].str.extract('([0-9\.]+)?([- A-Za-z]+)')#[[0,2]]
+        bathrooms[1] = bathrooms[1].apply(lambda x: x if pd.isna(x) else x.strip().lower().replace('baths','bath'))
+        bathrooms.columns = ['n_baths', 'bath_type']
+
+        for i in range(len(bathrooms)):
+            bt = bathrooms.at[i,'bath_type']
+            if(pd.notna(bt)):
+                if(re.search('half', bt)):
+                    bt = re.sub('half-', '', bt)
+                    bathrooms.loc[i,:] = [0.5, bt]
+
+                if(bt=='bath'):
+                    bathrooms.at[i,'bath_type'] = 'regular bath'
+                #else:
+                #    bathrooms.at[i,'bath_type'] = re.sub(' bath', '', bt)
+
+        df['bathrooms'] = bathrooms['n_baths'].astype(float)
+        df['bathroom_type'] = bathrooms['bath_type']
+
+        df = df[[
+            'host_response_time', #ok
+            'host_response_rate', #ok
+            'host_is_superhost', #ok
+            'host_total_listings_count', #ok
+            'host_identity_verified', #ok
+            'latitude', #ok
+            'longitude', #ok
+            'property_type',
+            'room_type', #ok
+            'accommodates', #ok
+            'bathrooms', #ok (o atualizado, vindo de bathrooms_text)
+            'bathroom_type', #ok
+            'bedrooms', #ok
+            'beds', #ok
+            'number_of_reviews', #ok
+            #'number_of_reviews_l30d', #ok
+            'review_scores_rating', #ok
+            'review_scores_checkin', #ok
+            'review_scores_communication', #ok
+            'review_scores_location', #ok
+            'minimum_nights',#ok (como o preço é apenas no momento, então vou deixar as noites apenas do momento também)
+            'maximum_nights',#ok (como o preço é apenas no momento, então vou deixar as noites apenas do momento também)
+            #'has_availability',#ok
+            'availability_30',#ok
+            #'availability_60',#ok
+            #'availability_90',#ok
+            #'availability_365',#ok
+            'price'
+        ]].dropna()
+
+        df['host_response_rate'] = df['host_response_rate'].str.replace('%', '').astype(float)
+        df['host_response_time'] = df['host_response_time'].astype('category').cat.reorder_categories(['within an hour', 'within a few hours', 'within a day', 'a few days or more']).cat.codes
+        df[['host_is_superhost','host_identity_verified']] = df[['host_is_superhost','host_identity_verified']].map(lambda x: x=='t')
+        df['property_type'] = df['property_type'].apply(transform_property)
+        df['price'] = df['price'].str.replace('[,\$]','', regex=True).astype(float)>300
+        
+        X, y = df.drop(columns=['price']), df['price'].astype(int)
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, shuffle=True, random_state=CONFIG['SEED'])
+
+        onehot = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+        scaler = StandardScaler() 
+        onehot = onehot.set_output(transform='pandas')
+        X_train = pd.concat([X_train.drop(columns=['property_type','room_type','bathroom_type']), onehot.fit_transform(X_train[['property_type','room_type','bathroom_type']], y_train)], axis=1)
+        X_test = pd.concat([X_test.drop(columns=['property_type','room_type','bathroom_type']), onehot.transform(X_test[['property_type','room_type','bathroom_type']])], axis=1)
+
+        X_train_norm = X_train.copy()
+        X_test_norm = X_test.copy()
+
+        nmrc_cols = ['host_response_time','host_response_rate','host_total_listings_count',
+                    'latitude','longitude','accommodates','bathrooms','bedrooms','beds',
+                    'number_of_reviews','review_scores_rating','review_scores_checkin',
+                    'review_scores_communication','review_scores_location',
+                    'minimum_nights','maximum_nights','availability_30']
+
+        X_train_norm.loc[:,nmrc_cols] = scaler.fit_transform(X_train_norm[nmrc_cols])
+        X_test_norm.loc[:,nmrc_cols] = scaler.transform(X_test_norm[nmrc_cols])
 
     else:
         raise ValueError('Dataset Not Usable')
@@ -550,7 +644,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
         xgb_study.optimize(xgb_objective, n_trials=num_trials)
         #print("XGBoost Best Trial:", xgb_study.best_trial)
         xgb_params = xgb_study.best_params
-        xgb_model = XGBClassifier(**xgb_params, random_state=CONFIG['SEED'], n_jobs=-1, eval_metric='logloss')
+        xgb_model = XGBClassifier(**xgb_params, random_state=CONFIG['SEED'], n_jobs=-1, eval_metric='logloss', enable_categorical=True)
         xgb_model = log_model_to_mlflow(
             xgb_model, "XGBoost", xgb_params,
             X_train, y_train, X_test, y_test
@@ -576,8 +670,8 @@ def getExpName(dataset):
     return f"{dataset}_{CONFIG['VERSION']}_{CONFIG['SEED']}"
 
 if(__name__=='__main__'):
-    DATASET = 'TWO MOONS'
-    NUM_TRIALS = 100
+    DATASET = 'airbnb'
+    NUM_TRIALS = 20
     experiment_name = getExpName(DATASET)
 
     searchAndTrain(dataset=DATASET, 
