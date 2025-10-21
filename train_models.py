@@ -6,7 +6,7 @@ import mlflow
 import mlflow.sklearn
 import optuna
 #import logging
-from sklearn.datasets import make_moons
+from sklearn.datasets import make_moons, make_circles
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -190,11 +190,17 @@ def transform_property(x):
 
 def get_data(dataset:str):
     global CONFIG
-    if(dataset=='twomoons'):
+    if(dataset=='twomoons' or dataset=='circles'):
         scaler = StandardScaler()
-        X, y = make_moons(n_samples=CONFIG['TWO_MOONS']['N_SAMPLES'], 
-                        noise=CONFIG['TWO_MOONS']['NOISE'], 
-                        random_state=CONFIG['SEED'])
+        if(dataset=='twomoons'):
+            X, y = make_moons(n_samples=CONFIG['TWO_MOONS']['N_SAMPLES'], 
+                            noise=CONFIG['TWO_MOONS']['NOISE'],
+                            random_state=CONFIG['SEED'])
+        else:
+            X, y = make_circles(n_samples=CONFIG['CIRCLES']['N_SAMPLES'], 
+                            noise=CONFIG['CIRCLES']['NOISE'], 
+                            factor=CONFIG['CIRCLES']['FACTOR'],
+                            random_state=CONFIG['SEED'])
         #df = pd.DataFrame(dict(x0=X[:,0], x1=X[:,1], label=y))
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, shuffle=True, random_state=CONFIG['SEED'])
         X_train_norm = scaler.fit_transform(X_train)
@@ -670,7 +676,7 @@ def getExpName(dataset):
     return f"{dataset}_{CONFIG['VERSION']}_{CONFIG['SEED']}"
 
 if(__name__=='__main__'):
-    DATASET = 'airbnb'
+    DATASET = 'circles'
     NUM_TRIALS = 20
     experiment_name = getExpName(DATASET)
 

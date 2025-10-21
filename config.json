@@ -5,6 +5,11 @@
         "N_SAMPLES": 10000,
         "NOISE": 0.22
     },
+    "CIRCLES": {
+        "N_SAMPLES": 10000,
+        "NOISE": 0.1,
+        "FACTOR": 0.5
+    },
     "BASE_MODELS":[
         "Decision_Tree",
         "SGD",
