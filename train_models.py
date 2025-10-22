@@ -228,6 +228,23 @@ def get_data(dataset:str):
         X_train_norm = scaler.fit_transform(X_train)
         X_test_norm = scaler.transform(X_test)
 
+    elif(dataset=='covid'):
+        df_covid = pd.read_csv('data/hosp1_v8 (1).csv') # 526 exemplos
+        X_train, y_train = df_covid.drop(columns=['severity']), df_covid['severity']
+
+        df_covid = pd.read_csv('data/hospital2 (2).csv').drop(columns=['creatino.fosfoquinase.cpk.plasma.ck',
+                                                                        'troponina.i.plasma.troponina.i']) # 134 exemplos
+        X_test, y_test = df_covid.drop(columns=['severity']), df_covid['severity']
+
+        scaler = StandardScaler()
+        nmrc_cols = X_train.columns[1:]
+        X_train_norm = X_train.copy()
+        X_test_norm = X_test.copy()
+        X_train_norm.loc[:,nmrc_cols] = scaler.fit_transform(X_train_norm[nmrc_cols])
+        X_test_norm.loc[:,nmrc_cols] = scaler.transform(X_test_norm[nmrc_cols])
+
+        return X_train, X_train_norm, X_test, X_test_norm, y_train, y_test
+
     elif(dataset=='airbnb'):
         df = pd.read_csv('data/listings.csv')
 
@@ -702,7 +719,7 @@ def getExpName(dataset):
 if(__name__=='__main__'):
     NUM_TRIALS = 20
     #DATASET = 'circles'
-    for DATASET in ['blobs','aniso','varied']:
+    for DATASET in ['covid']:
         experiment_name = getExpName(DATASET)
 
         searchAndTrain(dataset=DATASET, 
