@@ -6,7 +6,7 @@ import mlflow
 import mlflow.sklearn
 import optuna
 #import logging
-from sklearn.datasets import make_moons, make_circles
+from sklearn.datasets import make_moons, make_circles, make_blobs
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -87,9 +87,14 @@ def log_model_to_mlflow(model, model_name, hyperparams, X_train, y_train, X_test
         
         # Calcular métricas
         accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred, zero_division=0)
-        recall = recall_score(y_test, y_pred, zero_division=0)
-        f1 = f1_score(y_test, y_pred, zero_division=0)
+        if(len(set(y_test)) > 2):
+            precision = precision_score(y_test, y_pred, zero_division=0, average='macro')
+            recall = recall_score(y_test, y_pred, zero_division=0, average='macro')
+            f1 = f1_score(y_test, y_pred, zero_division=0, average='macro')
+        else:
+            precision = precision_score(y_test, y_pred, zero_division=0)
+            recall = recall_score(y_test, y_pred, zero_division=0)
+            f1 = f1_score(y_test, y_pred, zero_division=0)
         
         # Registrar hiperparâmetros
         mlflow.log_params(hyperparams)
@@ -190,17 +195,34 @@ def transform_property(x):
 
 def get_data(dataset:str):
     global CONFIG
-    if(dataset=='twomoons' or dataset=='circles'):
+    if(dataset in ['twomoons','circles','aniso','blobs','varied']):
         scaler = StandardScaler()
         if(dataset=='twomoons'):
             X, y = make_moons(n_samples=CONFIG['TWO_MOONS']['N_SAMPLES'], 
                             noise=CONFIG['TWO_MOONS']['NOISE'],
                             random_state=CONFIG['SEED'])
-        else:
+        elif(dataset=='circles'):
             X, y = make_circles(n_samples=CONFIG['CIRCLES']['N_SAMPLES'], 
                             noise=CONFIG['CIRCLES']['NOISE'], 
                             factor=CONFIG['CIRCLES']['FACTOR'],
                             random_state=CONFIG['SEED'])
+        elif(dataset=='aniso'):
+            X, y = make_blobs(n_samples=CONFIG['ANISO']['N_SAMPLES'], 
+                                       centers=CONFIG['ANISO']['CENTERS'],
+                                       cluster_std=CONFIG['ANISO']['CLUSTER_STD'],
+                                       random_state=CONFIG['SEED'])
+            X = np.dot(X, CONFIG['ANISO']['TRANSFORM_VECTOR'])
+        elif(dataset=='blobs'):
+            X, y = make_blobs(n_samples=CONFIG['BLOBS']['N_SAMPLES'], 
+                                       centers=CONFIG['BLOBS']['CENTERS'],
+                                       cluster_std=CONFIG['BLOBS']['CLUSTER_STD'],
+                                       random_state=CONFIG['SEED'])
+        elif(dataset=='varied'):
+            X, y = make_blobs(n_samples=CONFIG['VARIED']['N_SAMPLES'],
+                                       centers=CONFIG['VARIED']['CENTERS'],
+                                       cluster_std=CONFIG['VARIED']['CLUSTER_STD'],
+                                       random_state=CONFIG['SEED'])
+            
         #df = pd.DataFrame(dict(x0=X[:,0], x1=X[:,1], label=y))
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, shuffle=True, random_state=CONFIG['SEED'])
         X_train_norm = scaler.fit_transform(X_train)
@@ -300,6 +322,8 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
 
     X_train, X_train_norm, X_test, X_test_norm, y_train, y_test = get_data(dataset)
 
+    scorer_string = 'f1_macro' if len(set(y_train))>2 else 'f1'
+
     # 1. Define an objective function to be maximized.
     def dtree_objective(trial:optuna.trial._trial.Trial):
         
@@ -312,7 +336,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
         clf = DecisionTreeClassifier(max_depth=max_depth, criterion=criterion,
                                     min_samples_split=min_samples_split,
                                     min_samples_leaf=min_samples_leaf).fit(X_train, y_train)
-        score = cross_val_score(clf, X_train, y_train, scoring='f1', n_jobs=-1, cv=10).mean()
+        score = cross_val_score(clf, X_train, y_train, scoring=scorer_string, n_jobs=-1, cv=10).mean()
         
         return score
 
@@ -330,7 +354,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             random_state=CONFIG['SEED']
         ).fit(X_train_norm, y_train)
         
-        score = cross_val_score(clf, X_train_norm, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train_norm, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def logreg_objective(trial):
@@ -346,7 +370,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
         }
         
         clf = LogisticRegression(**params).fit(X_train_norm, y_train)
-        score = cross_val_score(clf, X_train_norm, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train_norm, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def knn_objective(trial):
@@ -360,7 +384,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             metric=metric, p=p
         ).fit(X_train_norm, y_train)
         
-        score = cross_val_score(clf, X_train_norm, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train_norm, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def svm_linear_objective(trial):
@@ -371,7 +395,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             kernel='linear', C=C, max_iter=max_iter, random_state=CONFIG['SEED']
         ).fit(X_train_norm, y_train)
         
-        score = cross_val_score(clf, X_train_norm, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train_norm, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def svm_poly_objective(trial):
@@ -386,7 +410,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             coef0=coef0, max_iter=max_iter, random_state=CONFIG['SEED']
         ).fit(X_train_norm, y_train)
         
-        score = cross_val_score(clf, X_train_norm, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train_norm, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def svm_rbf_objective(trial):
@@ -398,7 +422,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             kernel='rbf', C=C, gamma=gamma, max_iter=max_iter, random_state=CONFIG['SEED']
         ).fit(X_train_norm, y_train)
         
-        score = cross_val_score(clf, X_train_norm, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train_norm, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def mlp_objective(trial):
@@ -419,7 +443,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             random_state=CONFIG['SEED']
         ).fit(X_train_norm, y_train)
         
-        score = cross_val_score(clf, X_train_norm, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train_norm, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def rf_objective(trial):
@@ -437,7 +461,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             random_state=CONFIG['SEED'], n_jobs=-1
         ).fit(X_train, y_train)
         
-        score = cross_val_score(clf, X_train, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def gb_objective(trial):
@@ -456,7 +480,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             max_features=max_features, random_state=CONFIG['SEED']
         ).fit(X_train, y_train)
         
-        score = cross_val_score(clf, X_train, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def ada_objective(trial):
@@ -470,7 +494,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             random_state=CONFIG['SEED']
         ).fit(X_train, y_train)
         
-        score = cross_val_score(clf, X_train, y_train, scoring='f1', n_jobs=-1, cv=10)
+        score = cross_val_score(clf, X_train, y_train, scoring=scorer_string, n_jobs=-1, cv=10)
         return score.mean()
 
     def xgb_objective(trial):
@@ -492,7 +516,7 @@ def searchAndTrain(dataset, experiment_name, num_trials, load=False):
             random_state=CONFIG['SEED'], n_jobs=-1, eval_metric='logloss'
         ).fit(X_train, y_train)
         
-        score = cross_val_score(clf, X_train, y_train, scoring='f1', n_jobs=1, cv=10)
+        score = cross_val_score(clf, X_train, y_train, scoring=scorer_string, n_jobs=1, cv=10)
         return score.mean()
 
     # ============================================
@@ -676,10 +700,11 @@ def getExpName(dataset):
     return f"{dataset}_{CONFIG['VERSION']}_{CONFIG['SEED']}"
 
 if(__name__=='__main__'):
-    DATASET = 'circles'
     NUM_TRIALS = 20
-    experiment_name = getExpName(DATASET)
+    #DATASET = 'circles'
+    for DATASET in ['blobs','aniso','varied']:
+        experiment_name = getExpName(DATASET)
 
-    searchAndTrain(dataset=DATASET, 
-                   experiment_name=experiment_name, 
-                   num_trials=NUM_TRIALS)
+        searchAndTrain(dataset=DATASET, 
+                    experiment_name=experiment_name, 
+                    num_trials=NUM_TRIALS)

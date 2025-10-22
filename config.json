@@ -10,6 +10,39 @@
         "NOISE": 0.1,
         "FACTOR": 0.5
     },
+    "BLOBS": {
+        "N_SAMPLES": 4500,
+        "CENTERS": [
+            [5,9],
+            [7,4],
+            [6,6]
+        ],
+        "CLUSTER_STD": 0.4
+    },
+    "ANISO": {
+        "N_SAMPLES": 4500,
+        "CENTERS": [
+            [10,9],
+            [2,1],
+            [5,10]
+        ],
+        "CLUSTER_STD": 0.9,
+        "TRANSFORM_VECTOR": [
+            [-0.6, 0.5], 
+            [0.5, -0.2]
+        ]
+
+    },
+    "VARIED": {
+        "N_SAMPLES": 4500,
+        "CENTERS": [
+            [0,10],
+            [2,1],
+            [6,8]
+        ],
+        "CLUSTER_STD": [1.5, 2.5, 0.7]
+
+    },
     "BASE_MODELS":[
         "Decision_Tree",
         "SGD",
