@@ -326,6 +326,17 @@ def get_data(dataset:str):
         X_train_norm.loc[:,nmrc_cols] = scaler.fit_transform(X_train_norm[nmrc_cols])
         X_test_norm.loc[:,nmrc_cols] = scaler.transform(X_test_norm[nmrc_cols])
 
+    elif(dataset=='inadiplence'):
+        df = pd.read_csv('data/heloc_dataset_v1 (1).csv')
+
+        X, y = df.drop(columns=['RiskPerformance']), df['RiskPerformance'].replace({'Bad':0, 'Good':1}).astype(int)
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=CONFIG['SEED'], shuffle=True)
+
+        scaler = StandardScaler() 
+        X_train_norm = scaler.fit_transform(X_train.copy())
+        X_test_norm = scaler.transform(X_test.copy())
+
     else:
         raise ValueError('Dataset Not Usable')
     
@@ -719,7 +730,7 @@ def getExpName(dataset):
 if(__name__=='__main__'):
     NUM_TRIALS = 20
     #DATASET = 'circles'
-    for DATASET in ['covid']:
+    for DATASET in ['inadiplence']:
         experiment_name = getExpName(DATASET)
 
         searchAndTrain(dataset=DATASET, 
