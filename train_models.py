@@ -9,7 +9,7 @@ import optuna
 from sklearn.datasets import make_moons, make_circles, make_blobs
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-
+from imblearn.over_sampling import RandomOverSampler
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import SGDClassifier
 from sklearn.linear_model import LogisticRegression
@@ -336,6 +336,114 @@ def get_data(dataset:str):
         scaler = StandardScaler() 
         X_train_norm = scaler.fit_transform(X_train.copy())
         X_test_norm = scaler.transform(X_test.copy())
+
+    #elif(dataset=='machinefailure'):
+    #    df = df.drop(columns=['UDI','Product ID'])
+
+    #    df['Label'] = df.apply(lambda x: np.nan if x[['TWF','HDF','PWF','OSF']].sum()>1 else 0 if x[['TWF','HDF','PWF','OSF']].sum()==0 else x[['TWF','HDF','PWF','OSF']].values.argmax()+1, axis=1)#.astype(int)
+    #    df = df.dropna()
+
+    #    df['Type'] = df['Type'].replace({'L':0,'M':1,'H':2}).astype(int)
+
+    #    X, y = df.drop(columns=['Label']), df['Label'].astype(int)
+
+    #    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=CONFIG['SEED'], shuffle=True)
+
+    #    scaler = StandardScaler()
+    #    X_train_norm = scaler.fit_transform(X_train.copy())
+    #    X_test_norm = scaler.transform(X_test.copy())
+
+    elif(dataset=='covertype'):
+        df = pd.read_csv('data/covertype.csv')
+        X, y = df.drop(columns=['Cover_Type']), df['Cover_Type'].astype(int) - 1
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=CONFIG['SEED'], shuffle=True)
+
+        X_train_norm = X_train.copy()
+        X_test_norm = X_test.copy()
+        nmrc_cols = ['Elevation', 'Aspect', 'Slope', 'Horizontal_Distance_To_Hydrology',
+                    'Vertical_Distance_To_Hydrology', 'Horizontal_Distance_To_Roadways',
+                    'Hillshade_9am', 'Hillshade_Noon', 'Hillshade_3pm',
+                    'Horizontal_Distance_To_Fire_Points']
+        
+        scaler = StandardScaler()
+        X_train_norm.loc[:,nmrc_cols] = scaler.fit_transform(X_train_norm[nmrc_cols])
+        X_test_norm.loc[:,nmrc_cols] = scaler.transform(X_test_norm[nmrc_cols])
+
+    elif(dataset=='churn'):
+        df = pd.read_csv(f'data/customer_churn_telecom_services.csv', header=0)
+
+        # Quantiades de cada valor único por coluna
+        continuous_cols = []
+        cat_cols = []
+
+        for col in df.drop(columns=['Churn']).columns:
+            unique_values = df[col].value_counts()
+            if(len(unique_values) <= 4):
+                cat_cols.append(col)
+            else:
+                continuous_cols.append(col)
+
+        df['TotalCharges'] = df['TotalCharges'].fillna(0)
+
+        # Alterando colunas categóricas binárias para int
+
+        rdict = {'gender': {'Male': 0, 'Female': 1},
+                'Partner': {'No': 0, 'Yes': 1},
+                'Dependents': {'No': 0, 'Yes': 1},
+                'PhoneService': {'No': 0, 'Yes': 1},
+                'PaperlessBilling': {'No': 0, 'Yes': 1},
+                'Churn': {'No': 0, 'Yes': 1},
+                }
+
+        # Alterando colunas que são parcialmente dummy
+        # Exp.: OnlineSecurity: ("No internet service", "No", "Yes") -> (0, 1, 2)
+        rdict['MultipleLines'] = {'No phone service': 0, 'No': 1, 'Yes': 2}
+
+        cols = ['OnlineSecurity', 'OnlineBackup', 'DeviceProtection', 'TechSupport',
+                'StreamingTV', 'StreamingMovies']
+
+        for col in cols:
+            rdict[col] = {'No internet service': 0, 'No': 1, 'Yes': 2}
+
+        # Alterando colunas não-dummy
+
+        rdict['InternetService'] = {'No': 0, 'DSL': 1, 'Fiber optic': 2}
+        rdict['Contract'] = {'Month-to-month': 0, 'One year': 1, 'Two year': 2}
+        rdict['PaymentMethod'] = {'Credit card (automatic)': 0, 'Bank transfer (automatic)': 1,
+                                'Mailed check': 2, 'Electronic check': 3}
+
+        df = df.replace(rdict)
+        df = df.rename(columns={'Churn': 'target'}) 
+        cols = df.drop(columns=['target']).columns
+
+        temp = df[df.target==1]
+        train_pos, test_pos = train_test_split(temp, test_size=0.3, shuffle=True, random_state=CONFIG['SEED'])
+
+        temp = df[df.target==0]
+        train_neg, test_neg = train_test_split(temp, test_size=0.3, shuffle=True, random_state=CONFIG['SEED'])
+
+
+        X_train = pd.concat([train_pos[cols], train_neg[cols]], ignore_index=True)
+        y_train = pd.concat([train_pos['target'], train_neg['target']], ignore_index=True)
+
+        X_test = pd.concat([test_pos[cols], test_neg[cols]], ignore_index=True)
+        y_test = pd.concat([test_pos['target'], test_neg['target']], ignore_index=True)
+
+        # Normalização baseada no conjunto de treinamento
+        scaler1 = StandardScaler()
+
+        X_train_norm = X_train.copy()
+        X_train_norm.loc[:,continuous_cols] = scaler1.fit_transform(X_train_norm.loc[:,continuous_cols], y_train)
+
+        # Normalização nos conjuntos de validação e teste, com base nos dados de treinamento
+        X_test_norm = X_test.copy()
+        X_test_norm.loc[:,continuous_cols] = scaler1.transform(X_test_norm.loc[:,continuous_cols])
+
+        # Balanceamento no conjunto de treinamento
+        o_sampler = RandomOverSampler(random_state=CONFIG['SEED'])
+
+        X_train_norm, _ = o_sampler.fit_resample(X_train_norm, y_train) #yb_train == yb_train_norm
+        X_train, y_train = o_sampler.fit_resample(X_train, y_train)
 
     else:
         raise ValueError('Dataset Not Usable')
@@ -730,7 +838,7 @@ def getExpName(dataset):
 if(__name__=='__main__'):
     NUM_TRIALS = 20
     #DATASET = 'circles'
-    for DATASET in ['inadiplence']:
+    for DATASET in ['churn','covertype']:
         experiment_name = getExpName(DATASET)
 
         searchAndTrain(dataset=DATASET, 
