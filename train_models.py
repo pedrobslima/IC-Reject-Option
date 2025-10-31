@@ -355,9 +355,25 @@ def get_data(dataset:str):
 
     elif(dataset=='covertype'):
         df = pd.read_csv('data/covertype.csv')
-        X, y = df.drop(columns=['Cover_Type']), df['Cover_Type'].astype(int) - 1
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=CONFIG['SEED'], shuffle=True)
+        # Carregar dataset
+        target = 'Cover_Type'
 
+        # Amostragem estratificada de 10%
+        df_sample, _ = train_test_split(
+            df, 
+            test_size=0.9,
+            stratify=df[target],
+            random_state=CONFIG['SEED'],
+            shuffle=True
+        )
+
+        # Separar features e target
+        X = df_sample.drop(columns=[target])
+        y = df_sample[target].astype(int)-1
+
+        # Dividir em treino (70%) e teste (30%)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y, random_state=CONFIG['SEED'], shuffle=True)
+ 
         X_train_norm = X_train.copy()
         X_test_norm = X_test.copy()
         nmrc_cols = ['Elevation', 'Aspect', 'Slope', 'Horizontal_Distance_To_Hydrology',
@@ -838,7 +854,7 @@ def getExpName(dataset):
 if(__name__=='__main__'):
     NUM_TRIALS = 20
     #DATASET = 'circles'
-    for DATASET in ['churn','covertype']:
+    for DATASET in ['covertype']:
         experiment_name = getExpName(DATASET)
 
         searchAndTrain(dataset=DATASET, 
